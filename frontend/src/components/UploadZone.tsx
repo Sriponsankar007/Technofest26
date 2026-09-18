@@ -152,11 +152,17 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
       setActiveSample(sample);
       setGsdCm(sample.default_gsd_cm);
 
-      const res = await fetch(`http://127.0.0.1:8000/api/samples/${sample.filename}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch sample');
+      let blob: Blob;
+      try {
+        const res = await fetch(`/api/samples/${sample.filename}`);
+        if (!res.ok) throw new Error('Proxy fail');
+        blob = await res.blob();
+      } catch {
+        const res = await fetch(`http://127.0.0.1:8000/api/samples/${sample.filename}`);
+        if (!res.ok) throw new Error(`Direct fail: ${res.status}`);
+        blob = await res.blob();
       }
-      const blob = await res.blob();
+
       const file = new File([blob], sample.filename, { type: 'image/png' });
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(blob));
@@ -169,27 +175,44 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
     if (!onLoadPrecomputed) return;
     setLoadingMaster(true);
     try {
-      const geoRes = await fetch('http://127.0.0.1:8000/api/samples/master_cadastral_survey.geojson');
-      const geojson = await geoRes.json();
+      let geojson: any;
+      try {
+        const geoRes = await fetch('/api/samples/master_cadastral_survey.geojson');
+        if (!geoRes.ok) throw new Error(`HTTP ${geoRes.status}`);
+        geojson = await geoRes.json();
+      } catch {
+        const geoRes = await fetch('http://127.0.0.1:8000/api/samples/master_cadastral_survey.geojson');
+        if (!geoRes.ok) throw new Error(`HTTP ${geoRes.status}`);
+        geojson = await geoRes.json();
+      }
 
-      const imgRes = await fetch('http://127.0.0.1:8000/api/samples/sector_1_central.png');
-      const blob = await imgRes.blob();
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result as string;
-        const stats = {
-          parcel_count: geojson.features.length,
-          total_area_acres: geojson.properties?.total_area_acres || 262.7,
-          total_area_sqm: geojson.properties?.total_area_sqm || 1063109,
-          average_parcel_acres: (geojson.properties?.total_area_acres || 262.7) / geojson.features.length,
-          engine_mode: 'Master Cadastral Survey (35 Parcels, 262.7 Acres)',
-        };
-        onLoadPrecomputed(geojson, base64data, stats);
+      let imgUrl = '/api/samples/sector_1_central.png';
+      try {
+        const imgRes = await fetch('/api/samples/sector_1_central.png');
+        if (imgRes.ok) {
+          const blob = await imgRes.blob();
+          imgUrl = URL.createObjectURL(blob);
+        }
+      } catch {
+        imgUrl = 'http://127.0.0.1:8000/api/samples/sector_1_central.png';
+      }
+
+      const totalAcres = geojson.properties?.total_area_acres || 262.7;
+      const totalSqm = geojson.properties?.total_area_sqm || 1063109;
+      const parcelCount = geojson.features ? geojson.features.length : 35;
+
+      const stats = {
+        parcel_count: parcelCount,
+        total_area_acres: totalAcres,
+        total_area_sqm: totalSqm,
+        average_parcel_acres: totalAcres / Math.max(1, parcelCount),
+        engine_mode: 'Master Cadastral Survey (35 Parcels, 262.7 Acres)',
       };
-      reader.readAsDataURL(blob);
-    } catch (err) {
+
+      onLoadPrecomputed(geojson, imgUrl, stats);
+    } catch (err: any) {
       console.error('Failed to load master survey:', err);
-      alert('Unable to load master cadastral survey.');
+      alert(`Unable to load master cadastral survey: ${err?.message || err}`);
     } finally {
       setLoadingMaster(false);
     }
