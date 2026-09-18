@@ -1,5 +1,97 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, CheckCircle, ArrowRight, Settings2, Image as ImageIcon, Map } from 'lucide-react';
+import {
+  UploadCloud,
+  CheckCircle2,
+  ArrowRight,
+  Settings2,
+  Image as ImageIcon,
+  Map,
+  Compass,
+} from 'lucide-react';
+
+interface SampleItem {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  plots: number;
+  acres: number;
+  default_gsd_cm: number;
+  filename: string;
+}
+
+const BUILTIN_SAMPLES: SampleItem[] = [
+  {
+    id: 'sector_1_central',
+    name: 'Central Basin (Sector 1)',
+    category: 'SF5 Drone Survey',
+    description: 'High-density irrigated agricultural plots with prominent earthen bunds.',
+    plots: 16,
+    acres: 107.6,
+    default_gsd_cm: 42.2,
+    filename: 'sector_1_central.png',
+  },
+  {
+    id: 'sector_4_east',
+    name: 'East Canal Basin (Sector 4)',
+    category: 'SF5 Drone Survey',
+    description: 'Rectilinear irrigation canal plots with sharp field boundary ridges.',
+    plots: 14,
+    acres: 98.2,
+    default_gsd_cm: 42.2,
+    filename: 'sector_4_east.png',
+  },
+  {
+    id: 'sector_2_north',
+    name: 'North Terraces (Sector 2)',
+    category: 'SF5 Drone Survey',
+    description: 'Contour-bunded dryland parcels and sloped terrain plots.',
+    plots: 12,
+    acres: 129.7,
+    default_gsd_cm: 42.2,
+    filename: 'sector_2_north.png',
+  },
+  {
+    id: 'sector_5_west',
+    name: 'West Foothill Plots (Sector 5)',
+    category: 'SF5 Drone Survey',
+    description: 'Foothill agricultural parcels bordering scrub terrain with curved bunds.',
+    plots: 11,
+    acres: 84.5,
+    default_gsd_cm: 42.2,
+    filename: 'sector_5_west.png',
+  },
+  {
+    id: 'sector_3_south',
+    name: 'South Riverbed (Sector 3)',
+    category: 'SF5 Drone Survey',
+    description: 'Alluvial riverbank agricultural parcels along meandering waterway.',
+    plots: 7,
+    acres: 25.4,
+    default_gsd_cm: 42.2,
+    filename: 'sector_3_south.png',
+  },
+  {
+    id: 'maharashtra_paddy_bunds',
+    name: 'Terraced Paddy Bunds',
+    category: 'Regional Benchmark',
+    description: 'Traditional water-retaining stepped paddy bunds with narrow ridge walls.',
+    plots: 8,
+    acres: 18.2,
+    default_gsd_cm: 25.0,
+    filename: 'maharashtra_paddy_bunds.png',
+  },
+  {
+    id: 'synthetic_farm_grid',
+    name: 'Ground-Truth Cadastral Grid',
+    category: 'Validation Grid',
+    description: '6 mathematically defined parcels with regular bund lines for accuracy calibration.',
+    plots: 6,
+    acres: 3.7,
+    default_gsd_cm: 10.0,
+    filename: 'synthetic_farm_grid.png',
+  },
+];
 
 interface UploadZoneProps {
   onDetect: (file: File | Blob, gsdCm: number, useMl: boolean) => void;
@@ -11,15 +103,15 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [activeSample, setActiveSample] = useState<SampleItem | null>(BUILTIN_SAMPLES[0]);
   const [gsdCm, setGsdCm] = useState<number>(42.2);
   const [useMl, setUseMl] = useState<boolean>(true);
-  const [activePreset, setActivePreset] = useState<string>('sector_1_central.png');
   const [loadingMaster, setLoadingMaster] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-load Sector 1 on initial component mount
+  // Auto-load Sector 1 into the active upload area on mount
   useEffect(() => {
-    loadSample('sector_1_central.png', 42.2);
+    transferSampleToActive(BUILTIN_SAMPLES[0]);
   }, []);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -37,38 +129,39 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+      handleUserFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+      handleUserFile(e.target.files[0]);
     }
   };
 
-  const handleFile = (file: File) => {
+  const handleUserFile = (file: File) => {
     setSelectedFile(file);
-    setActivePreset('');
+    setActiveSample(null);
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
   };
 
-  const loadSample = async (filename: string, defaultGsd: number) => {
+  const transferSampleToActive = async (sample: SampleItem) => {
     try {
-      setActivePreset(filename);
-      const res = await fetch(`http://127.0.0.1:8000/api/samples/${filename}`);
+      setActiveSample(sample);
+      setGsdCm(sample.default_gsd_cm);
+
+      const res = await fetch(`http://127.0.0.1:8000/api/samples/${sample.filename}`);
       if (!res.ok) {
-        filename = 'sector_1_central.png';
+        throw new Error('Failed to fetch sample');
       }
       const blob = await res.blob();
-      const file = new File([blob], filename, { type: 'image/png' });
+      const file = new File([blob], sample.filename, { type: 'image/png' });
       setSelectedFile(file);
-      setGsdCm(defaultGsd);
       setPreviewUrl(URL.createObjectURL(blob));
     } catch (err) {
-      console.error('Failed to load sample image:', err);
+      console.error('Error transferring sample:', err);
     }
   };
 
@@ -89,7 +182,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
           total_area_acres: geojson.properties?.total_area_acres || 262.7,
           total_area_sqm: geojson.properties?.total_area_sqm || 1063109,
           average_parcel_acres: (geojson.properties?.total_area_acres || 262.7) / geojson.features.length,
-          engine_mode: 'Master Cadastral Survey (3 Sectors, 35 Parcels)',
+          engine_mode: 'Master Cadastral Survey (35 Parcels, 262.7 Acres)',
         };
         onLoadPrecomputed(geojson, base64data, stats);
       };
@@ -109,16 +202,22 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-6">
-      {/* Title & Introduction */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <div className="w-full h-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col">
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 mb-6 border-b border-slate-800/80">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white mb-2">
+          <div className="flex items-center space-x-2.5">
+            <span className="text-xs uppercase font-mono tracking-widest text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/40">
+              Cadastral Workstation
+            </span>
+            <span className="text-xs text-slate-500 font-mono">• 14 GB Orthomosaic Compatible</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white mt-1.5">
             Agricultural Parcel & Bund Boundary Detection
           </h1>
-          <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
-            Extract cadastral land boundaries and earthen bund ridges from drone orthomosaics.
-            Compute precise surface areas, inspect perimeters, and export GIS-compliant shapefiles.
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            Select a survey sector from the catalog on the left to transfer it to the active inspection canvas,
+            or drop your own aerial GeoTIFF / drone photo.
           </p>
         </div>
 
@@ -127,133 +226,206 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
             type="button"
             onClick={handleLoadMasterSurvey}
             disabled={loadingMaster}
-            className="shrink-0 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 text-slate-200 text-xs font-medium flex items-center space-x-2 transition-all shadow-sm"
+            className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 hover:border-emerald-500/70 text-slate-200 text-xs font-semibold flex items-center space-x-2.5 transition-all shadow-md group"
           >
-            <Map className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{loadingMaster ? 'Loading Survey...' : 'Load Master Survey (35 Parcels)'}</span>
+            <div className="w-5 h-5 rounded-md bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+              <Map className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-left">
+              <span className="block text-white leading-tight">
+                {loadingMaster ? 'Loading Full Map...' : 'Master Survey Overview'}
+              </span>
+              <span className="block text-[10px] text-slate-400 font-mono leading-tight">
+                35 Parcels • 262.7 Acres
+              </span>
+            </div>
           </button>
         )}
       </div>
 
-      {/* Preset Sector Selectors */}
-      <div className="mb-6 bg-slate-900 border border-slate-800 rounded-xl p-4">
-        <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center space-x-2">
-          <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-          <span>Survey Dataset Sectors (SF5, SF6 Orthomosaic)</span>
+      {/* Main Two-Column Workstation Layout */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+        {/* LEFT COLUMN: Sample Dataset Catalog (Side Panel) */}
+        <div className="lg:col-span-4 xl:col-span-4 flex flex-col bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+            <div className="flex items-center space-x-2 text-xs font-semibold text-slate-200 uppercase tracking-wider">
+              <Compass className="w-4 h-4 text-emerald-400" />
+              <span>Survey Catalog</span>
+            </div>
+            <span className="text-[11px] font-mono text-slate-400 px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
+              {BUILTIN_SAMPLES.length} Datasets
+            </span>
+          </div>
+
+          <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+            Click any sector below to immediately transfer it to the active upload canvas:
+          </p>
+
+          {/* Scrollable Sample List */}
+          <div className="flex-1 overflow-y-auto space-y-2.5 pr-1.5 custom-scrollbar">
+            {BUILTIN_SAMPLES.map((sample) => {
+              const isSelected = activeSample?.id === sample.id && !selectedFile?.name.includes('blob') && selectedFile?.name === sample.filename;
+
+              return (
+                <div
+                  key={sample.id}
+                  onClick={() => transferSampleToActive(sample)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center space-x-3 group relative ${
+                    isSelected
+                      ? 'border-emerald-500/80 bg-emerald-950/20 shadow-sm'
+                      : 'border-slate-800/80 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-800/40'
+                  }`}
+                >
+                  {/* Thumbnail */}
+                  <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 border border-slate-800 bg-slate-900 relative">
+                    <img
+                      src={`http://127.0.0.1:8000/api/samples/${sample.filename}`}
+                      alt={sample.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 drop-shadow" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Text Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <h4
+                        className={`text-xs font-bold truncate ${
+                          isSelected ? 'text-emerald-400' : 'text-slate-200 group-hover:text-white'
+                        }`}
+                      >
+                        {sample.name}
+                      </h4>
+                    </div>
+
+                    <div className="flex items-center space-x-2 text-[10px] text-slate-400 font-mono mt-1">
+                      <span className="text-slate-300 font-semibold">{sample.plots} plots</span>
+                      <span>•</span>
+                      <span className="text-emerald-400/90">{sample.acres} ac</span>
+                      <span>•</span>
+                      <span>{sample.default_gsd_cm} cm/px</span>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                      {sample.category}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <button
-            type="button"
-            onClick={() => loadSample('sector_1_central.png', 42.2)}
-            className={`p-3 rounded-lg border text-left transition-all ${
-              activePreset === 'sector_1_central.png' || activePreset === 'real_farmland_dense_plots.png'
-                ? 'border-emerald-500/70 bg-emerald-950/20 text-white shadow-sm'
-                : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <span className="text-xs font-semibold block mb-0.5 text-white">Central Basin (Sector 1)</span>
-            <span className="text-[11px] text-slate-400 font-mono block">Dense irrigated farm plots • 42 cm/px</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => loadSample('sector_2_north.png', 42.2)}
-            className={`p-3 rounded-lg border text-left transition-all ${
-              activePreset === 'sector_2_north.png'
-                ? 'border-emerald-500/70 bg-emerald-950/20 text-white shadow-sm'
-                : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <span className="text-xs font-semibold block mb-0.5 text-white">North Terraces (Sector 2)</span>
-            <span className="text-[11px] text-slate-400 font-mono block">Contour bunds & dryland • 42 cm/px</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => loadSample('sector_3_south.png', 42.2)}
-            className={`p-3 rounded-lg border text-left transition-all ${
-              activePreset === 'sector_3_south.png'
-                ? 'border-emerald-500/70 bg-emerald-950/20 text-white shadow-sm'
-                : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <span className="text-xs font-semibold block mb-0.5 text-white">South Riverbank (Sector 3)</span>
-            <span className="text-[11px] text-slate-400 font-mono block">Alluvial riverbed plots • 42 cm/px</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Upload Dropzone */}
-        <div className="md:col-span-2">
+        {/* RIGHT COLUMN: Active Upload & Inspection Canvas */}
+        <div className="lg:col-span-8 xl:col-span-8 flex flex-col space-y-4">
+          {/* Main Inspection Canvas */}
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`h-72 rounded-xl border border-dashed flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-colors relative overflow-hidden ${
+            className={`flex-1 min-h-[340px] rounded-2xl border p-5 flex flex-col justify-between transition-all relative overflow-hidden ${
               dragActive
-                ? 'border-emerald-500 bg-emerald-950/10'
+                ? 'border-emerald-500 bg-emerald-950/20'
                 : previewUrl
-                ? 'border-slate-700 bg-slate-900'
-                : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
+                ? 'border-slate-800 bg-slate-900/80 shadow-lg'
+                : 'border-slate-800 border-dashed bg-slate-900/30'
             }`}
           >
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*,.tif,.tiff"
-              onChange={handleChange}
+              onChange={handleFileChange}
               className="hidden"
             />
 
-            {previewUrl ? (
-              <div className="relative w-full h-full flex flex-col items-center justify-center">
-                <img
-                  src={previewUrl}
-                  alt="Orthomosaic Preview"
-                  className="max-h-52 max-w-full rounded-lg object-contain border border-slate-800"
-                />
-                <div className="mt-2.5 flex items-center space-x-1.5 text-xs text-slate-300 font-mono">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{selectedFile?.name || 'Raster loaded'}</span>
+            {/* Canvas Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 z-10">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                    {activeSample ? activeSample.name : selectedFile?.name || 'Active Inspection Stage'}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {activeSample
+                      ? `Transferred from ${activeSample.category}`
+                      : selectedFile
+                      ? `Custom file loaded (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`
+                      : 'Drop image or select from catalog'}
+                  </span>
                 </div>
               </div>
-            ) : (
-              <>
-                <div className="w-12 h-12 rounded-lg bg-slate-800 border border-slate-700/60 flex items-center justify-center mb-3 text-slate-300">
-                  <UploadCloud className="w-6 h-6" />
-                </div>
-                <h3 className="text-sm font-semibold text-white mb-1">
-                  Upload Aerial Orthomosaic
-                </h3>
-                <p className="text-xs text-slate-400 mb-3 max-w-xs">
-                  Drag and drop a GeoTIFF tile, PNG, or JPG orthophoto, or browse files.
-                </p>
-                <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 font-mono">
-                  <span>GeoTIFF / PNG / JPG</span>
-                  <span>•</span>
-                  <span>Max 100MB per tile</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
 
-        {/* Survey Settings Sidebar */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center space-x-2 text-slate-300 font-semibold text-xs uppercase tracking-wider mb-4 pb-2 border-b border-slate-800">
-              <Settings2 className="w-3.5 h-3.5 text-slate-400" />
-              <span>Survey Configuration</span>
+              {/* Upload Custom File Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-slate-200 text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <UploadCloud className="w-3.5 h-3.5 text-slate-400" />
+                <span>Browse Custom File</span>
+              </button>
             </div>
 
-            {/* GSD Setting */}
-            <div className="mb-5">
-              <div className="flex justify-between text-xs font-mono mb-1.5">
-                <span className="text-slate-400">Ground Resolution (GSD)</span>
-                <span className="text-white font-bold">{gsdCm} cm/px</span>
+            {/* Image Preview / Center Area */}
+            <div className="flex-1 flex flex-col items-center justify-center py-4 relative">
+              {previewUrl ? (
+                <div className="relative max-h-72 w-full flex items-center justify-center">
+                  <img
+                    src={previewUrl}
+                    alt="Active Orthomosaic"
+                    className="max-h-72 max-w-full rounded-xl object-contain border border-slate-800 shadow-2xl"
+                  />
+                  <div className="absolute bottom-2 right-2 px-2.5 py-1 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-800 text-[10px] font-mono text-slate-300">
+                    Target GSD: {gsdCm} cm/px
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="cursor-pointer flex flex-col items-center justify-center text-center p-6"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center mb-3 text-slate-400">
+                    <UploadCloud className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mb-1">Drag & Drop Drone Orthomosaic</h4>
+                  <p className="text-xs text-slate-400 max-w-xs">
+                    Drop any GeoTIFF (.tif), PNG, or JPG orthophoto here, or pick a sample from the catalog.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Upload Strip at Canvas Bottom */}
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+              <div className="flex items-center space-x-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Ready for boundary extraction</span>
+              </div>
+              <span className="hidden sm:inline text-slate-500">Supports GeoTIFF • PNG • JPG (up to 100MB per tile)</span>
+            </div>
+          </div>
+
+          {/* Survey Parameter Controls & Action Button */}
+          <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            {/* Resolution GSD Slider */}
+            <div className="flex-1 max-w-md">
+              <div className="flex justify-between items-center text-xs font-mono mb-1.5">
+                <span className="text-slate-400 flex items-center">
+                  <Settings2 className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+                  Ground Sample Distance (GSD)
+                </span>
+                <span className="text-white font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
+                  {gsdCm} cm/px
+                </span>
               </div>
               <input
                 type="range"
@@ -262,53 +434,52 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onDetect, isLoading, onL
                 step="0.5"
                 value={gsdCm}
                 onChange={(e) => setGsdCm(parseFloat(e.target.value))}
-                className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
               />
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
-                <span>5 cm (Drone)</span>
-                <span>42 cm (Level 3)</span>
-                <span>100 cm</span>
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+                <span>5 cm (UAV flight)</span>
+                <span>42 cm (Level 3 Ortho)</span>
+                <span>100 cm (Satellite)</span>
               </div>
             </div>
 
-            {/* ML Coherence Mode */}
-            <div className="mb-5">
-              <label className="flex items-center justify-between cursor-pointer p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                <div>
-                  <span className="text-xs font-medium text-slate-200 block">Ridge Enhancement</span>
-                  <span className="text-[10px] text-slate-400 block font-mono">Structure tensor filter</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={useMl}
-                  onChange={(e) => setUseMl(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 bg-slate-800 border-slate-700"
-                />
-              </label>
-            </div>
-          </div>
+            {/* ML Ridge Enhancement Toggle */}
+            <label className="flex items-center space-x-2.5 cursor-pointer px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 shrink-0">
+              <input
+                type="checkbox"
+                checked={useMl}
+                onChange={(e) => setUseMl(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 bg-slate-800 border-slate-700 cursor-pointer"
+              />
+              <div>
+                <span className="text-xs font-semibold text-slate-200 block leading-tight">Structure Tensor</span>
+                <span className="text-[10px] text-slate-400 font-mono block leading-tight">Ridge coherence</span>
+              </div>
+            </label>
 
-          <button
-            disabled={!selectedFile || isLoading}
-            onClick={handleSubmit}
-            className={`w-full py-2.5 px-4 rounded-lg font-semibold text-xs flex items-center justify-center space-x-2 transition-all ${
-              selectedFile && !isLoading
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer active:scale-98 shadow-sm'
-                : 'bg-slate-800 text-slate-400 cursor-not-allowed'
-            }`}
-          >
-            {isLoading ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                <span>Extracting Boundaries...</span>
-              </>
-            ) : (
-              <>
-                <span>Run Boundary Extraction</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
+            {/* Run Extraction Button */}
+            <button
+              disabled={!selectedFile || isLoading}
+              onClick={handleSubmit}
+              className={`py-3 px-6 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 shadow-lg transition-all shrink-0 ${
+                selectedFile && !isLoading
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer active:scale-98 shadow-emerald-950/50'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" />
+                  <span>Segmenting Parcels...</span>
+                </>
+              ) : (
+                <>
+                  <span>Run Boundary Extraction</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
